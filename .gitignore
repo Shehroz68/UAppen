@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Expo / tooling at repo root
+.expo/
+dist/
+web-build/
+
+# Python
+**/__pycache__/
+**/*.py[cod]
+**/venv/
+**/.venv/
+
+# Local env / secrets
+.env
+.env.*
+**/.env
+**/.env.*
+!**/.env.example
+
+# Local databases
+**/*.db
+**/*.sqlite3
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs / debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+*.log
+
+# TypeScript
+*.tsbuildinfo
