@@ -12,6 +12,9 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "UAppen needs your location to show directions to campus events.",
+        "NSCalendarsUsageDescription": "UAppen needs calendar access to add campus events to your calendar.",
+        "NSCalendarsFullAccessUsageDescription": "UAppen needs calendar access to add campus events to your calendar.",
+        "NSRemindersUsageDescription": "UAppen can create calendar reminders for campus events.",
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true,
           "NSExceptionDomains": {
@@ -33,7 +36,9 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION"
+        "ACCESS_FINE_LOCATION",
+        "READ_CALENDAR",
+        "WRITE_CALENDAR"
       ],
       "usesCleartextTraffic": true
     },
@@ -47,6 +52,12 @@
         "expo-location",
         {
           "locationAlwaysAndWhenInUsePermission": "Allow UAppen to use your location to show directions to campus events."
+        }
+      ],
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "Allow UAppen to add campus events to your calendar."
         }
       ],
       [

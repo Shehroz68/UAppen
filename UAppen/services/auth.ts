@@ -1,29 +1,23 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Supabase config - uses Expo's native EXPO_PUBLIC_ prefix
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
 
-// Validate Supabase config
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error('Supabase configuration is missing! Please check your .env file.');
   console.error('Required variables: EXPO_PUBLIC_SUPABASE_URL, EXPO_PUBLIC_SUPABASE_ANON_KEY');
 }
 
-// Initialize Supabase client
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// Simple response type (compatible with existing code)
 export interface AuthResult {
   success: boolean;
   message: string;
-  user?: any; // Supabase User type
+  user?: any;
 }
 
-// Sign up
 export const signUp = async (email: string, password: string): Promise<AuthResult> => {
   try {
-    // Validate email domain - only allow @umass.edu emails
     const emailDomain = email.toLowerCase().split('@')[1];
     if (emailDomain !== 'umass.edu') {
       return {
@@ -44,7 +38,6 @@ export const signUp = async (email: string, password: string): Promise<AuthResul
       };
     }
 
-    // Check if email confirmation is required
     if (data.user && !data.session) {
       return {
         success: true,
@@ -66,7 +59,6 @@ export const signUp = async (email: string, password: string): Promise<AuthResul
   }
 };
 
-// Sign in
 export const signIn = async (email: string, password: string): Promise<AuthResult> => {
   try {
     const { data, error } = await supabase.auth.signInWithPassword({
@@ -75,7 +67,6 @@ export const signIn = async (email: string, password: string): Promise<AuthResul
     });
 
     if (error) {
-      // Handle email not confirmed error
       if (error.message.includes('Email not confirmed') || error.message.includes('email_not_confirmed')) {
         return {
           success: false,
@@ -101,35 +92,10 @@ export const signIn = async (email: string, password: string): Promise<AuthResul
   }
 };
 
-// Sign out
-export const signOutUser = async (): Promise<AuthResult> => {
-  try {
-    const { error } = await supabase.auth.signOut();
-
-    if (error) {
-      return {
-        success: false,
-        message: error.message || 'Failed to sign out',
-      };
-    }
-
-    return {
-      success: true,
-      message: 'Signed out successfully',
-    };
-  } catch (error: any) {
-    return {
-      success: false,
-      message: error.message || 'Failed to sign out',
-    };
-  }
-};
-
-// Reset password
 export const resetPassword = async (email: string): Promise<AuthResult> => {
   try {
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: 'uappen://reset-password', // Deep link for password reset
+      redirectTo: 'uappen://reset-password',
     });
 
     if (error) {
@@ -150,43 +116,3 @@ export const resetPassword = async (email: string): Promise<AuthResult> => {
     };
   }
 };
-
-// Resend confirmation email
-export const resendConfirmationEmail = async (email: string): Promise<AuthResult> => {
-  try {
-    const { error } = await supabase.auth.resend({
-      type: 'signup',
-      email: email,
-    });
-
-    if (error) {
-      return {
-        success: false,
-        message: error.message || 'Failed to resend confirmation email',
-      };
-    }
-
-    return {
-      success: true,
-      message: 'Confirmation email sent! Please check your inbox.',
-    };
-  } catch (error: any) {
-    return {
-      success: false,
-      message: error.message || 'Failed to resend confirmation email',
-    };
-  }
-};
-
-// Get current user
-export const getCurrentUser = async () => {
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    return user;
-  } catch {
-    return null;
-  }
-};
-
-// Export supabase client for advanced use cases
-export { supabase };

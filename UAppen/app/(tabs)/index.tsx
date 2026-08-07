@@ -1,13 +1,23 @@
+import { useFocusEffect } from '@react-navigation/native';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Event, EventLocation, fetchEvents, groupEventsByLocation } from '@/services/api';
-import { filterEventsByCategories, mapToMainCategory } from '@/services/categoryMapping';
+import { exportEventToCalendar } from '@/services/calendar';
+import { filterEventsByCategories, getSportLabel, mapToMainCategory } from '@/services/categoryMapping';
+import { getSavedEvents, toggleSavedEvent } from '@/services/savedEvents';
 import { useTheme } from '@/contexts/ThemeContext';
 import * as Location from 'expo-location';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, AppState, Dimensions, Linking, Modal, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 
 const SCREEN_HEIGHT = Dimensions.get('screen').height;
+
+const UMASS_REGION = {
+  latitude: 42.390722,
+  longitude: -72.528181,
+  latitudeDelta: 0.008,
+  longitudeDelta: 0.010,
+};
 
 export default function HomeScreen() {
   const { theme: appTheme, toggleTheme: toggleAppTheme, colors } = useTheme();
@@ -17,19 +27,14 @@ export default function HomeScreen() {
   const [isMapMoving, setIsMapMoving] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [selectedThemes, setSelectedThemes] = useState<string[]>([]);
-  const [events, setEvents] = useState<Event[]>([]);
   const [eventLocations, setEventLocations] = useState<EventLocation[]>([]);
-  // Keep a ref to all events to ensure we always have access to the full list
   const allEventsRef = useRef<Event[]>([]);
-  // Keep a ref to selected themes to ensure we always have the latest value
   const selectedThemesRef = useRef<string[]>([]);
-  // Add a key to force marker re-render when filters change
   const [markerKey, setMarkerKey] = useState(0);
   const [selectedLocation, setSelectedLocation] = useState<EventLocation | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
   const [tracksViewChanges, setTracksViewChanges] = useState(true);
+  const [savedEventIds, setSavedEventIds] = useState<Set<number>>(new Set());
 
-  // Event categories in exact order
   const eventCategories = [
     'Arts and Music',
     'Athletics',
@@ -43,32 +48,6 @@ export default function HomeScreen() {
     'Other',
   ];
 
-  // UMass Amherst campus boundaries - centered on actual event locations
-const UMASS_CENTER = {
-  latitude: 42.390722,  // Center of all event markers (updated with corrected coordinates)
-  longitude: -72.528181,
-};
-
-const UMASS_REGION = {
-  latitude: 42.390722,  // Center of all event markers (updated with corrected coordinates)
-  longitude: -72.528181,
-  latitudeDelta: 0.008,  // Optimal zoom to show all markers clearly
-  longitudeDelta: 0.010,
-};
-
-  // Map boundaries - much larger area around UMass campus for better exploration
-  const CAMPUS_BOUNDARIES = {
-    northEast: {
-      latitude: 42.4200,  // North edge (much larger)
-      longitude: -72.5000, // East edge (much larger)
-    },
-    southWest: {
-      latitude: 42.3650,  // South edge (much larger)
-      longitude: -72.5550, // West edge (much larger)
-    },
-  };
-
-  // Custom light grey map style matching UMass theme
   // Map style based on theme
   const customMapStyle = appTheme === 'light' ? [
     {
@@ -276,37 +255,32 @@ const UMASS_REGION = {
 
   // Load events from backend
   const loadEvents = async () => {
-    setIsLoading(true);
     try {
       const fetchedEvents = await fetchEvents();
-      setEvents(fetchedEvents);
-      allEventsRef.current = fetchedEvents; // Store in ref for reliable access
+      allEventsRef.current = fetchedEvents;
       const grouped = groupEventsByLocation(fetchedEvents);
       setEventLocations(grouped);
-      console.log(`✅ Loaded ${fetchedEvents.length} events at ${grouped.length} locations`);
-      
-      // Debug: Log marker coordinates
-      console.log('📍 Marker Coordinates:');
-      grouped.forEach(loc => {
-        console.log(`  ${loc.normalized_location}: (${loc.latitude}, ${loc.longitude})`);
-      });
-
-      // Keep the camera on Amherst (not the user's remote GPS)
       setTimeout(() => centerOnCampus(), 100);
-      
-      // tracksViewChanges will be set to false automatically via onLayout for Android
     } catch (error) {
-      console.error('❌ Failed to load events:', error);
+      console.error('Failed to load events:', error);
       Alert.alert('Error', 'Unable to load events. Make sure the backend is running on http://localhost:8000');
-    } finally {
-      setIsLoading(false);
     }
   };
 
-  // Log theme changes for debugging
-  useEffect(() => {
-    console.log('🎨 Current theme:', appTheme);
-  }, [appTheme]);
+  const loadSavedIds = async () => {
+    const saved = await getSavedEvents();
+    setSavedEventIds(new Set(saved.map((e) => e.id)));
+  };
+
+  const handleToggleGoing = async (event: Event) => {
+    try {
+      const result = await toggleSavedEvent(event);
+      setSavedEventIds(new Set(result.events.map((e) => e.id)));
+    } catch (error) {
+      console.error('Failed to toggle saved event:', error);
+      Alert.alert('Error', 'Unable to update Going status');
+    }
+  };
 
   const centerOnCampus = () => {
     mapRef.current?.animateToRegion(UMASS_REGION, 500);
@@ -341,7 +315,14 @@ const UMASS_REGION = {
   useEffect(() => {
     getCurrentLocation();
     loadEvents(); // Load events from backend
+    loadSavedIds();
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadSavedIds();
+    }, [])
+  );
 
   // Keep selectedThemesRef in sync with selectedThemes state
   useEffect(() => {
@@ -437,7 +418,7 @@ const UMASS_REGION = {
     setIsMenuOpen(false);
     
     // Use ref to ensure we always have access to all events, even if state is stale
-    const allEvents = allEventsRef.current.length > 0 ? allEventsRef.current : events;
+    const allEvents = allEventsRef.current;
     
     // Use ref to get the latest selected themes (more reliable than state)
     // The ref is kept in sync with state via useEffect, so it's always up to date
@@ -776,142 +757,183 @@ const UMASS_REGION = {
         transparent={true}
         onRequestClose={handleCloseModal}
       >
-        <TouchableWithoutFeedback onPress={handleCloseModal}>
-          <View style={styles.eventModalOverlay}>
-            <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-              <View style={[styles.eventModalContent, { backgroundColor: appTheme === 'dark' ? '#B0B7C0' : colors.background }]}>
-                {/* Modal Header */}
-                <View style={[styles.eventModalHeader, { borderBottomColor: colors.border }]}>
-                  <View style={styles.eventModalHeaderContent}>
-                    <IconSymbol name="mappin.circle.fill" size={24} color="#881C1C" />
-                    <View style={styles.eventModalHeaderText}>
-                      <Text style={[styles.eventModalTitle, { color: colors.text }]}>
-                        {selectedLocation?.normalized_location}
-                      </Text>
-                      <Text style={[styles.eventModalSubtitle, { color: colors.textSecondary }]}>
-                        {selectedLocation?.event_count} {selectedLocation?.event_count === 1 ? 'Event' : 'Events'}
-                      </Text>
-                    </View>
-                  </View>
-                  <TouchableOpacity 
-                    onPress={handleCloseModal}
-                    style={styles.eventModalCloseButton}
-                  >
-                    <IconSymbol name="xmark.circle.fill" size={28} color="#666" />
-                  </TouchableOpacity>
+        <View style={styles.eventModalOverlay}>
+          <TouchableOpacity
+            style={styles.eventModalBackdrop}
+            activeOpacity={1}
+            onPress={handleCloseModal}
+          />
+          <View style={[styles.eventModalContent, { backgroundColor: appTheme === 'dark' ? '#B0B7C0' : colors.background }]}>
+            {/* Modal Header */}
+            <View style={[styles.eventModalHeader, { borderBottomColor: colors.border }]}>
+              <View style={styles.eventModalHeaderContent}>
+                <IconSymbol name="mappin.circle.fill" size={24} color="#881C1C" />
+                <View style={styles.eventModalHeaderText}>
+                  <Text style={[styles.eventModalTitle, { color: colors.text }]}>
+                    {selectedLocation?.normalized_location}
+                  </Text>
+                  <Text style={[styles.eventModalSubtitle, { color: colors.textSecondary }]}>
+                    {selectedLocation?.event_count} {selectedLocation?.event_count === 1 ? 'Event' : 'Events'}
+                  </Text>
                 </View>
+              </View>
+              <TouchableOpacity 
+                onPress={handleCloseModal}
+                style={styles.eventModalCloseButton}
+              >
+                <IconSymbol name="xmark.circle.fill" size={28} color="#666" />
+              </TouchableOpacity>
+            </View>
 
-                {/* Get Directions Button - Single button for the location */}
-                <View style={[styles.directionsButtonContainer, { borderBottomColor: colors.border }]}>
-                  <TouchableOpacity
-                    style={styles.mainDirectionsButton}
-                    onPress={() => {
-                      if (currentLocation && selectedLocation) {
-                        openDirections(
-                          currentLocation, 
-                          {
-                            latitude: selectedLocation.latitude,
-                            longitude: selectedLocation.longitude,
-                          },
-                          selectedLocation.normalized_location
-                        );
-                      } else {
-                        Alert.alert('Location Required', 'Please enable location services to get directions');
-                      }
-                    }}
+            {/* Get Directions Button - Single button for the location */}
+            <View style={[styles.directionsButtonContainer, { borderBottomColor: colors.border }]}>
+              <TouchableOpacity
+                style={styles.mainDirectionsButton}
+                onPress={() => {
+                  if (currentLocation && selectedLocation) {
+                    openDirections(
+                      currentLocation, 
+                      {
+                        latitude: selectedLocation.latitude,
+                        longitude: selectedLocation.longitude,
+                      },
+                      selectedLocation.normalized_location
+                    );
+                  } else {
+                    Alert.alert('Location Required', 'Please enable location services to get directions');
+                  }
+                }}
+              >
+                <IconSymbol name="arrow.triangle.turn.up.right.circle.fill" size={20} color="#FFFFFF" />
+                <Text style={styles.mainDirectionsText}>Get Directions to Location</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Events List */}
+            <ScrollView
+              style={styles.eventsList}
+              contentContainerStyle={styles.eventsListContent}
+              nestedScrollEnabled
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator
+              bounces
+            >
+              {selectedLocation?.events.map((event) => {
+                const hasLink = event.link && event.link.trim() !== '';
+                
+                return (
+                  <View
+                    key={event.id}
+                    style={[
+                      styles.eventCard,
+                      !hasLink && styles.eventCardNoLink,
+                      { backgroundColor: colors.surface, borderColor: colors.border }
+                    ]}
                   >
-                    <IconSymbol name="arrow.triangle.turn.up.right.circle.fill" size={20} color="#FFFFFF" />
-                    <Text style={styles.mainDirectionsText}>Get Directions to Location</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {/* Events List */}
-                <ScrollView style={styles.eventsList}>
-                  {selectedLocation?.events.map((event, index) => {
-                    const hasLink = event.link && event.link.trim() !== '';
-                    const CardComponent = hasLink ? TouchableOpacity : View;
+                    {/* Event Name */}
+                    <Text style={[styles.eventName, { color: colors.text }]}>{event.name}</Text>
                     
-                    return (
-                      <CardComponent
-                        key={event.id}
-                        style={[
-                          styles.eventCard,
-                          !hasLink && styles.eventCardNoLink,
-                          { backgroundColor: colors.surface, borderColor: colors.border }
-                        ]}
-                        onPress={hasLink ? () => {
+                    {/* No Link Indicator */}
+                    {!hasLink && (
+                      <View style={styles.noLinkBadge}>
+                        <Text style={styles.noLinkText}>No registration link</Text>
+                      </View>
+                    )}
+                  
+                  {/* Specific Location */}
+                  <View style={styles.eventMetaRow}>
+                    <IconSymbol name="mappin.circle.fill" size={14} color="#881C1C" />
+                    <Text style={styles.eventLocationText}>{event.location}</Text>
+                  </View>
+                  
+                  {/* Event Time & Date */}
+                  <View style={styles.eventMetaRow}>
+                    <IconSymbol name="calendar" size={14} color={colors.textSecondary} />
+                    <Text style={[styles.eventMetaText, { color: colors.textSecondary }]}>{event.date}</Text>
+                  </View>
+                  
+                  <View style={styles.eventMetaRow}>
+                    <IconSymbol name="clock" size={14} color={colors.textSecondary} />
+                    <Text style={[styles.eventMetaText, { color: colors.textSecondary }]}>
+                      {event.start_time}
+                      {event.end_time && ` - ${event.end_time}`}
+                    </Text>
+                  </View>
+
+                  {/* Organization */}
+                  {event.organization && (
+                    <View style={styles.eventMetaRow}>
+                      <IconSymbol name="person.2" size={14} color={colors.textSecondary} />
+                      <Text style={[styles.eventMetaText, { color: colors.textSecondary }]}>{event.organization}</Text>
+                    </View>
+                  )}
+
+                  {/* Category / Sport label */}
+                  {(() => {
+                    const sportLabel = getSportLabel(event.category);
+                    let displayCategory: string | null = sportLabel;
+                    if (!displayCategory) {
+                      if (event.category && event.category.trim() !== '' && event.category !== 'Uncategorized') {
+                        displayCategory = mapToMainCategory(event.category) || event.category;
+                      } else {
+                        displayCategory = 'Other';
+                      }
+                    }
+                    
+                    return displayCategory ? (
+                      <View style={[
+                        styles.eventCategoryBadge,
+                        sportLabel ? styles.sportBadge : null,
+                      ]}>
+                        <Text style={styles.eventCategoryText}>{displayCategory}</Text>
+                      </View>
+                    ) : null;
+                  })()}
+
+                  <View style={styles.eventActionRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.eventActionButton,
+                        savedEventIds.has(event.id) && styles.eventActionButtonActive,
+                      ]}
+                      onPress={() => handleToggleGoing(event)}
+                    >
+                      <IconSymbol
+                        name={savedEventIds.has(event.id) ? 'star.fill' : 'star'}
+                        size={16}
+                        color="#FFFFFF"
+                      />
+                      <Text style={styles.eventActionText}>
+                        {savedEventIds.has(event.id) ? 'Going' : 'Going?'}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.eventActionButtonSecondary}
+                      onPress={() => exportEventToCalendar(event)}
+                    >
+                      <IconSymbol name="calendar.badge.plus" size={16} color="#881C1C" />
+                      <Text style={styles.eventActionTextSecondary}>Calendar</Text>
+                    </TouchableOpacity>
+                    {hasLink && (
+                      <TouchableOpacity
+                        style={styles.eventActionButtonSecondary}
+                        onPress={() => {
                           Linking.openURL(event.link).catch((error) => {
                             console.error('Error opening event link:', error);
                             Alert.alert('Error', 'Unable to open event link');
                           });
-                        } : undefined}
-                        activeOpacity={hasLink ? 0.7 : 1}
+                        }}
                       >
-                        {/* Event Name */}
-                        <Text style={[styles.eventName, { color: colors.text }]}>{event.name}</Text>
-                        
-                        {/* No Link Indicator */}
-                        {!hasLink && (
-                          <View style={styles.noLinkBadge}>
-                            <Text style={styles.noLinkText}>No registration link</Text>
-                          </View>
-                        )}
-                      
-                      {/* Specific Location */}
-                      <View style={styles.eventMetaRow}>
-                        <IconSymbol name="mappin.circle.fill" size={14} color="#881C1C" />
-                        <Text style={styles.eventLocationText}>{event.location}</Text>
-                      </View>
-                      
-                      {/* Event Time & Date */}
-                      <View style={styles.eventMetaRow}>
-                        <IconSymbol name="calendar" size={14} color={colors.textSecondary} />
-                        <Text style={[styles.eventMetaText, { color: colors.textSecondary }]}>{event.date}</Text>
-                      </View>
-                      
-                      <View style={styles.eventMetaRow}>
-                        <IconSymbol name="clock" size={14} color={colors.textSecondary} />
-                        <Text style={[styles.eventMetaText, { color: colors.textSecondary }]}>
-                          {event.start_time}
-                          {event.end_time && ` - ${event.end_time}`}
-                        </Text>
-                      </View>
-
-                      {/* Organization */}
-                      {event.organization && (
-                        <View style={styles.eventMetaRow}>
-                          <IconSymbol name="person.2" size={14} color={colors.textSecondary} />
-                          <Text style={[styles.eventMetaText, { color: colors.textSecondary }]}>{event.organization}</Text>
-                        </View>
-                      )}
-
-                      {/* Category */}
-                      {(() => {
-                        // Get the main category for display
-                        let displayCategory: string | null = null;
-                        if (event.category && event.category.trim() !== '' && event.category !== 'Uncategorized') {
-                          // Try to map to main category, or use original if it's already a main category
-                          const mainCategory = mapToMainCategory(event.category);
-                          displayCategory = mainCategory || event.category;
-                        } else {
-                          // Show "Other" for events without categories
-                          displayCategory = 'Other';
-                        }
-                        
-                        return displayCategory ? (
-                          <View style={styles.eventCategoryBadge}>
-                            <Text style={styles.eventCategoryText}>{displayCategory}</Text>
-                          </View>
-                        ) : null;
-                      })()}
-                    </CardComponent>
-                    );
-                  })}
-                </ScrollView>
-              </View>
-            </TouchableWithoutFeedback>
+                        <Text style={styles.eventActionTextSecondary}>Details</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  </View>
+                );
+              })}
+            </ScrollView>
           </View>
-        </TouchableWithoutFeedback>
+        </View>
       </Modal>
 
       {/* More Events Button */}
@@ -1186,12 +1208,17 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
   },
+  eventModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
   eventModalContent: {
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
+    height: '75%',
     maxHeight: '80%',
-    paddingBottom: 20,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 16,
+    zIndex: 2,
   },
   eventModalHeader: {
     flexDirection: 'row',
@@ -1251,7 +1278,11 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   eventsList: {
+    flex: 1,
+  },
+  eventsListContent: {
     padding: 16,
+    paddingBottom: 40,
   },
   eventCard: {
     backgroundColor: '#f8f8f8',
@@ -1310,9 +1341,51 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 8,
   },
+  sportBadge: {
+    backgroundColor: '#1B4F72',
+  },
   eventCategoryText: {
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '600',
+  },
+  eventActionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4,
+  },
+  eventActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#A04040',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  eventActionButtonActive: {
+    backgroundColor: '#881C1C',
+  },
+  eventActionButtonSecondary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#881C1C',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  eventActionText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  eventActionTextSecondary: {
+    color: '#881C1C',
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

@@ -1,112 +1,228 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { useCallback, useState } from 'react';
+import {
+  Alert,
+  FlatList,
+  Linking,
+  Platform,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 
-import { Collapsible } from '@/components/ui/collapsible';
-import { ExternalLink } from '@/components/external-link';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Fonts } from '@/constants/theme';
+import { useTheme } from '@/contexts/ThemeContext';
+import type { Event } from '@/services/api';
+import { exportEventToCalendar } from '@/services/calendar';
+import { getSportLabel } from '@/services/categoryMapping';
+import { getSavedEvents, unsaveEvent } from '@/services/savedEvents';
 
-export default function TabTwoScreen() {
+export default function SavedEventsScreen() {
+  const { colors } = useTheme();
+  const [events, setEvents] = useState<Event[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const saved = await getSavedEvents();
+    setEvents(saved);
+    setLoading(false);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
+
+  const handleRemove = async (eventId: number) => {
+    const next = await unsaveEvent(eventId);
+    setEvents(next);
+  };
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#D0D0D0', dark: '#353636' }}
-      headerImage={
-        <IconSymbol
-          size={310}
-          color="#808080"
-          name="chevron.left.forwardslash.chevron.right"
-          style={styles.headerImage}
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <StatusBar barStyle="light-content" backgroundColor="#881C1C" />
+      <View style={[styles.header, { backgroundColor: colors.headerBackground }]}>
+        <Text style={[styles.headerTitle, { color: colors.headerText }]}>Going</Text>
+        <Text style={[styles.headerSubtitle, { color: colors.headerText }]}>
+          Events you marked as going
+        </Text>
+      </View>
+
+      {loading ? (
+        <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Loading…</Text>
+      ) : events.length === 0 ? (
+        <View style={styles.emptyState}>
+          <IconSymbol name="star.fill" size={40} color="#881C1C" />
+          <Text style={[styles.emptyTitle, { color: colors.text }]}>No saved events yet</Text>
+          <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+            Open a map pin and tap Going to save events here.
+          </Text>
+        </View>
+      ) : (
+        <FlatList
+          data={events}
+          keyExtractor={(item) => String(item.id)}
+          contentContainerStyle={styles.listContent}
+          renderItem={({ item }) => (
+            <View
+              style={[
+                styles.card,
+                { backgroundColor: colors.surface, borderColor: colors.border },
+              ]}
+            >
+              <Text style={[styles.eventName, { color: colors.text }]}>{item.name}</Text>
+              <Text style={[styles.meta, { color: colors.textSecondary }]}>
+                {item.date} · {item.start_time}
+                {item.end_time ? ` - ${item.end_time}` : ''}
+              </Text>
+              <Text style={[styles.meta, { color: colors.textSecondary }]}>
+                {item.location || item.normalized_location}
+              </Text>
+              {item.category ? (
+                <View style={[styles.badge, getSportLabel(item.category) ? styles.sportBadge : null]}>
+                  <Text style={styles.badgeText}>
+                    {getSportLabel(item.category) || item.category}
+                  </Text>
+                </View>
+              ) : null}
+
+              <View style={styles.actions}>
+                <TouchableOpacity
+                  style={styles.actionBtn}
+                  onPress={() => exportEventToCalendar(item)}
+                >
+                  <IconSymbol name="calendar.badge.plus" size={18} color="#FFFFFF" />
+                  <Text style={styles.actionText}>Calendar</Text>
+                </TouchableOpacity>
+                {item.link ? (
+                  <TouchableOpacity
+                    style={[styles.actionBtn, styles.secondaryBtn]}
+                    onPress={() =>
+                      Linking.openURL(item.link).catch(() =>
+                        Alert.alert('Error', 'Unable to open event link')
+                      )
+                    }
+                  >
+                    <Text style={[styles.actionText, { color: '#881C1C' }]}>Details</Text>
+                  </TouchableOpacity>
+                ) : null}
+                <TouchableOpacity
+                  style={[styles.actionBtn, styles.removeBtn]}
+                  onPress={() => handleRemove(item.id)}
+                >
+                  <Text style={[styles.actionText, { color: '#881C1C' }]}>Remove</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
         />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText
-          type="title"
-          style={{
-            fontFamily: Fonts.rounded,
-          }}>
-          Explore
-        </ThemedText>
-      </ThemedView>
-      <ThemedText>This app includes example code to help you get started.</ThemedText>
-      <Collapsible title="File-based routing">
-        <ThemedText>
-          This app has two screens:{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/explore.tsx</ThemedText>
-        </ThemedText>
-        <ThemedText>
-          The layout file in <ThemedText type="defaultSemiBold">app/(tabs)/_layout.tsx</ThemedText>{' '}
-          sets up the tab navigator.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/router/introduction">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Android, iOS, and web support">
-        <ThemedText>
-          You can open this project on Android, iOS, and the web. To open the web version, press{' '}
-          <ThemedText type="defaultSemiBold">w</ThemedText> in the terminal running this project.
-        </ThemedText>
-      </Collapsible>
-      <Collapsible title="Images">
-        <ThemedText>
-          For static images, you can use the <ThemedText type="defaultSemiBold">@2x</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">@3x</ThemedText> suffixes to provide files for
-          different screen densities
-        </ThemedText>
-        <Image
-          source={require('@/assets/images/react-logo.png')}
-          style={{ width: 100, height: 100, alignSelf: 'center' }}
-        />
-        <ExternalLink href="https://reactnative.dev/docs/images">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Light and dark mode components">
-        <ThemedText>
-          This template has light and dark mode support. The{' '}
-          <ThemedText type="defaultSemiBold">useColorScheme()</ThemedText> hook lets you inspect
-          what the user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Animations">
-        <ThemedText>
-          This template includes an example of an animated component. The{' '}
-          <ThemedText type="defaultSemiBold">components/HelloWave.tsx</ThemedText> component uses
-          the powerful{' '}
-          <ThemedText type="defaultSemiBold" style={{ fontFamily: Fonts.mono }}>
-            react-native-reanimated
-          </ThemedText>{' '}
-          library to create a waving hand animation.
-        </ThemedText>
-        {Platform.select({
-          ios: (
-            <ThemedText>
-              The <ThemedText type="defaultSemiBold">components/ParallaxScrollView.tsx</ThemedText>{' '}
-              component provides a parallax effect for the header image.
-            </ThemedText>
-          ),
-        })}
-      </Collapsible>
-    </ParallaxScrollView>
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  headerImage: {
-    color: '#808080',
-    bottom: -90,
-    left: -35,
-    position: 'absolute',
+  container: {
+    flex: 1,
   },
-  titleContainer: {
+  header: {
+    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 14 : 54,
+    paddingBottom: 16,
+    paddingHorizontal: 20,
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+  },
+  headerSubtitle: {
+    marginTop: 4,
+    fontSize: 14,
+    opacity: 0.9,
+  },
+  listContent: {
+    padding: 16,
+    paddingBottom: 40,
+  },
+  card: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+  },
+  eventName: {
+    fontSize: 17,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  meta: {
+    fontSize: 13,
+    marginBottom: 2,
+  },
+  badge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#881C1C',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginTop: 8,
+  },
+  sportBadge: {
+    backgroundColor: '#1B4F72',
+  },
+  badgeText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  actions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
+    marginTop: 12,
+  },
+  actionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#881C1C',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  secondaryBtn: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#881C1C',
+  },
+  removeBtn: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#881C1C',
+  },
+  actionText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  emptyState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    gap: 10,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  emptyText: {
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginTop: 24,
   },
 });

@@ -35,7 +35,6 @@ BUILDING_COORDINATES = {
     "black box": (42.390860257046578, -72.52765600009641),  # Black Box Theater at Student Union
     "campus center": (42.39172623345291, -72.52695451838713),  # 1 Campus Center Way (Murray D. Lincoln)
     "campus center auditorium": (42.39172623345291, -72.52695451838713),  # 1 Campus Center Way
-    "mullins center": (42.388502, -72.532002),
     "recreation center": (42.38894949788261, -72.53168901012216),
     "campus recreation center": (42.38894949788261, -72.53168901012216),
     "recwell": (42.38894949788261, -72.53168901012216),
@@ -50,6 +49,9 @@ BUILDING_COORDINATES = {
     # Libraries - Verified coordinates
     "du bois library": (42.390518, -72.526758),
     "w.e.b. du bois library": (42.390518, -72.526758),
+    "science and engineering library": (42.39385, -72.52995),
+    "science & engineering library": (42.39385, -72.52995),
+    "sel": (42.39385, -72.52995),
     "integrated learning center": (42.390002, -72.527502),
     "ilc": (42.390002, -72.527502),
     
@@ -58,18 +60,41 @@ BUILDING_COORDINATES = {
     "boyden": (42.38900, -72.52850),
     "totman building": (42.39611742467878, -72.52593670346366),
     "totman": (42.39611742467878, -72.52593670346366),
-    "mcguirk alumni stadium": (42.38650, -72.52750),
-    "garber field": (42.38750, -72.52650),
+    "mcguirk alumni stadium": (42.37730, -72.53610),
+    "mcguirk stadium": (42.37730, -72.53610),
+    "mcguirk": (42.37730, -72.53610),
+    "garber field": (42.38890, -72.52980),
+    "rudd field": (42.38780, -72.53240),
+    "mullins center": (42.38930, -72.53340),
+    "mullins": (42.38930, -72.53340),
+    "curry hicks cage": (42.38870, -72.53010),
+    "sortino field": (42.38390, -72.53520),
+    "earl lorden field": (42.38450, -72.53410),
+    "gladchuk field hockey complex": (42.38670, -72.53380),
+    "gladchuk complex": (42.38670, -72.53380),
+    "gladchuk": (42.38670, -72.53380),
+    "southwest courts": (42.38620, -72.53080),
+    "southwest courts + horseshoe": (42.38620, -72.53080),
+    "horseshoe": (42.38620, -72.53080),
     
     # Cultural Centers & Community Spaces
     "new africa house": (42.389012388610695, -72.52071678997159),
     "stonewall center": (42.388718616350765, -72.52926370346404),
     "latinx american cultural center": (42.38263727103118, -72.52985501880781),
     "newman center": (42.387184658596915, -72.52179600161311),
+    "bromery center for the arts": (42.38817, -72.52618),
+    "bromery center": (42.38817, -72.52618),
+    "blackbox theatre": (42.39086, -72.52766),
+    "black box theatre": (42.39086, -72.52766),
+    "blackbox": (42.39086, -72.52766),
+    "umass agricultural learning center": (42.39380, -72.51450),
+    "agricultural learning center": (42.39380, -72.51450),
     
     # Parking & Other Areas
     "lot 44": (42.398978962777456, -72.52450318997101),  # Sylvan Woods parking
     "sylvan woods": (42.398978962777456, -72.52450318997101),
+    "tba": (42.39120, -72.52670),
+    "amherst": (42.39120, -72.52670),
     
     # Other Buildings
     "cape cod lounge": (42.39149, -72.52949),
@@ -144,6 +169,13 @@ def normalize_location(location: str) -> str:
         r'\bilc\b': 'integrated learning center',
         r'\bdu ?bois\b': 'du bois library',
         r'\bdu bois library library\b': 'du bois library',
+        r'\bscience and engineering library\b': 'science and engineering library',
+        r'\bbromery center(?:\s+for\s+the\s+arts)?\b': 'bromery center for the arts',
+        r'\bblack\s*box(?:\s+theatre|\s+theater)?\b': 'blackbox theatre',
+        r'\brudd field\b': 'rudd field',
+        r'\bmcguirk(?:\s+alumni)?(?:\s+stadium)?\b': 'mcguirk alumni stadium',
+        r'\bmullins(?:\s+center)?\b': 'mullins center',
+        r'\bsouthwest courts(?:\s*\+?\s*horseshoe)?\b': 'southwest courts',
     }
     
     for pattern, replacement in replacements.items():
@@ -171,10 +203,11 @@ def get_coordinates(location: str) -> tuple:
     if normalized in BUILDING_COORDINATES:
         return BUILDING_COORDINATES[normalized]
     
-    # Try partial match (find if normalized name is contained in any key)
-    for building_name, coords in BUILDING_COORDINATES.items():
-        if normalized in building_name or building_name in normalized:
-            return coords
+    # Try partial match (avoid short fragments like "mass" matching "umass ...")
+    if len(normalized) >= 5:
+        for building_name, coords in BUILDING_COORDINATES.items():
+            if normalized in building_name or building_name in normalized:
+                return coords
     
     # Return default (center of campus) if not found
     print(f"Warning: Location not found: '{location}' (normalized: '{normalized}') - using default coords")
@@ -221,10 +254,10 @@ if __name__ == "__main__":
         "Unknown Building 123",
     ]
     
-    print("🧪 Testing Location Mapper:\n")
+    print("Testing Location Mapper:\n")
     for loc in test_locations:
         info = get_location_info(loc)
-        print(f"📍 {info['original']}")
-        print(f"   → {info['normalized']}")
-        print(f"   → ({info['latitude']}, {info['longitude']})\n")
+        print(f"- {info['original']}")
+        print(f"  -> {info['normalized']}")
+        print(f"  -> ({info['latitude']}, {info['longitude']})\n")
 

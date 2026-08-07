@@ -3,17 +3,15 @@ import React from 'react';
 
 import { HapticTab } from '@/components/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#881C1C', // UMass maroon
+        tabBarActiveTintColor: '#881C1C',
         tabBarInactiveTintColor: '#9e9e9e',
         tabBarStyle: {
-          backgroundColor: '#f5f5f5', // Light grey background
+          backgroundColor: '#f5f5f5',
           borderTopColor: '#d0d0d0',
         },
         headerShown: false,
@@ -23,16 +21,14 @@ export default function TabLayout() {
         name="index"
         options={{
           title: 'Map',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="map.fill" color={color} />,
-          tabBarStyle: { display: 'none' },
+          tabBarIcon: ({ color }) => <IconSymbol size={26} name="map.fill" color={color} />,
         }}
       />
       <Tabs.Screen
         name="explore"
         options={{
-          title: 'Events',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="calendar" color={color} />,
-          tabBarStyle: { display: 'none' },
+          title: 'Going',
+          tabBarIcon: ({ color }) => <IconSymbol size={26} name="star.fill" color={color} />,
         }}
       />
     </Tabs>

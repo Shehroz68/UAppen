@@ -149,9 +149,13 @@ def save_events(events):
 
 
 def refresh_events():
-    """Fetch latest UMass events and store them."""
+    """Fetch latest UMass Engage + Athletics events and store them."""
+    from .athletics import refresh_athletics_events, remap_all_event_locations
+
     print("Refreshing events...")
     new_events = fetch_events()
     added = save_events(new_events)
-    print(f"Refreshed. Added {added} events.")
-    return added
+    athletics_added = refresh_athletics_events()
+    remap_all_event_locations()
+    print(f"Refreshed. Added {added} Engage events and {athletics_added} athletics events.")
+    return added + athletics_added

@@ -13,7 +13,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import { resetPassword, signIn, signUp } from '../services/firebase';
+import { resetPassword, signIn, signUp } from '../services/auth';
 
 type AuthMode = 'signin' | 'signup';
 
